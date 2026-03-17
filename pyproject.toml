@@ -1,15 +1,15 @@
 [project]
-name = "example_package"
-description = "example package"
+name = "pillow_degas"
+description = "Atari DEGAS image loader for Pillow"
 version = "0.1.0"
 authors = [
-    { name = "Random Hacker", email = "no@dev.null" }
+    { name = "Gareth Davidson", email = "gaz@bitplane.net" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
 
 dependencies = [
-
+    "pillow"
 ]
 
 [project.optional-dependencies]
