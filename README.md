@@ -1,7 +1,7 @@
 # pillow-degas
 
 A [Pillow](https://pillow.readthedocs.io/) plugin for reading Atari ST
-DEGAS and DEGAS Elite image files.
+DEGAS and NEOchrome image files.
 
 ## Supported formats
 
@@ -13,6 +13,7 @@ DEGAS and DEGAS Elite image files.
 | .PC1      | 320x200    | 16      | Yes        |
 | .PC2      | 640x200    | 4       | Yes        |
 | .PC3      | 640x400    | 2       | Yes        |
+| .NEO      | 320x200    | 16      | No         |
 
 ## Installation
 
@@ -30,5 +31,5 @@ img = Image.open("artwork.pi1")
 img.save("artwork.png")
 ```
 
-Importing `pillow_degas` registers the DEGAS format with Pillow. After
-that, `Image.open()` handles all six file types automatically.
+Importing `pillow_degas` registers all supported formats with Pillow.
+After that, `Image.open()` handles DEGAS and NEOchrome files automatically.
