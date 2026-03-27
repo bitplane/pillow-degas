@@ -9,5 +9,6 @@ Import this module to register the DEGAS format with Pillow::
 """
 
 from pillow_degas.degas_image import DegasImageFile
+from pillow_degas.neo_image import NeoImageFile
 
-__all__ = ["DegasImageFile"]
+__all__ = ["DegasImageFile", "NeoImageFile"]

@@ -15,6 +15,7 @@ from pillow_degas.degas_image import (
     parse_palette,
     reinterleave,
 )
+from pillow_degas.neo_image import _accept as neo_accept
 
 from .conftest import DATA_DIR
 
@@ -319,3 +320,59 @@ def test_reject_undersized_uncompressed():
     data = struct.pack(">H", 0) + b"\x00" * 100
     with pytest.raises(Exception):
         Image.open(io.BytesIO(data))
+
+
+# --- NEOchrome tests ---
+
+
+def test_neo_accept_valid():
+    assert neo_accept(b"\x00\x00\x00\x00")
+
+
+def test_neo_accept_invalid():
+    assert not neo_accept(b"\x00\x01\x00\x00")  # non-zero flags
+    assert not neo_accept(b"\x00\x00\x00\x01")  # non-zero resolution
+    assert not neo_accept(b"\x00\x00")  # too short
+    assert not neo_accept(b"")
+
+
+def test_open_neo():
+    img = Image.open(DATA_DIR / "STARTREK.NEO")
+    assert img.format == "NEO"
+    assert img.mode == "P"
+    assert img.size == (320, 200)
+    assert img.info["resolution"] == 0
+    img.load()
+    assert img.getpixel((0, 0)) is not None
+
+
+def test_neo_palette_not_garbled():
+    """NEO palette should come from offset 4, not offset 2 like DEGAS.
+
+    The image has a green background (palette index 1 = (0, 109, 0)) with
+    wireframe details in greys and other colours. If the palette were read
+    from offset 2 (DEGAS style) the colours would be completely wrong.
+    """
+    img = Image.open(DATA_DIR / "STARTREK.NEO")
+    img.load()
+    # Background is palette index 1
+    assert img.getpixel((0, 0)) == 1
+    # Palette index 1 should be green (not garbled)
+    pal = img.getpalette()
+    r, g, b = pal[3], pal[4], pal[5]  # index 1 = bytes 3,4,5
+    assert g > r and g > b and g > 64, f"Expected green background, got ({r}, {g}, {b})"
+
+
+def test_neo_not_opened_as_degas():
+    """NEOchrome files should not be claimed by the DEGAS loader."""
+    img = Image.open(DATA_DIR / "STARTREK.NEO")
+    assert img.format == "NEO"
+
+
+def test_neo_save_as_png(tmp_path):
+    img = Image.open(DATA_DIR / "STARTREK.NEO")
+    img.load()
+    out = tmp_path / "startrek.png"
+    img.save(out)
+    reloaded = Image.open(out)
+    assert reloaded.size == (320, 200)

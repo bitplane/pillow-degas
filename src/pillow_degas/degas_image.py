@@ -134,6 +134,10 @@ def reinterleave(data: bytes, width: int, height: int, bitplanes: int) -> bytes:
     return bytes(result)
 
 
+DEGAS_UNCOMPRESSED_SIZE = HEADER_SIZE + PIXEL_DATA_SIZE  # 32034
+NEO_FILE_SIZE = 32128
+
+
 def _accept(prefix: bytes) -> bool:
     """Quick check if data might be a DEGAS image."""
     if len(prefix) < 2:
@@ -165,13 +169,17 @@ class DegasImageFile(ImageFile.ImageFile):
 
         width, height, bitplanes = MODES[resolution]
 
-        if not compressed:
-            self.fp.seek(0, 2)
-            file_size = self.fp.tell()
-            self.fp.seek(HEADER_SIZE)
-            if file_size < HEADER_SIZE + PIXEL_DATA_SIZE:
-                msg = "not a DEGAS file"
-                raise SyntaxError(msg)
+        self.fp.seek(0, 2)
+        file_size = self.fp.tell()
+        self.fp.seek(HEADER_SIZE)
+
+        if file_size == NEO_FILE_SIZE:
+            msg = "not a DEGAS file"
+            raise SyntaxError(msg)
+
+        if not compressed and file_size < DEGAS_UNCOMPRESSED_SIZE:
+            msg = "not a DEGAS file"
+            raise SyntaxError(msg)
 
         palette_data, is_ste = parse_palette(header[2:HEADER_SIZE])
 
