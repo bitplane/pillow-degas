@@ -344,6 +344,23 @@ def test_reject_undersized_uncompressed():
         Image.open(io.BytesIO(data))
 
 
+def test_open_padded_degas_at_neo_file_size(tmp_path):
+    path = tmp_path / "padded.pi1"
+    path.write_bytes(struct.pack(">H", 0) + bytes(32 + 32000 + 94))
+
+    with Image.open(path) as img:
+        assert img.format == "DEGAS"
+        img.load()
+
+
+def test_open_padded_degas_with_nonzero_first_palette_entry():
+    data = struct.pack(">HH", 0, 0x0777) + bytes(30 + 32000 + 94)
+
+    with Image.open(io.BytesIO(data)) as img:
+        assert img.format == "DEGAS"
+        img.load()
+
+
 # --- NEOchrome tests ---
 
 

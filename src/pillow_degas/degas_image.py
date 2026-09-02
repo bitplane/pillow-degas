@@ -195,7 +195,13 @@ class DegasImageFile(ImageFile.ImageFile):
         file_size = self.fp.tell()
         self.fp.seek(HEADER_SIZE)
 
-        if file_size == NEO_FILE_SIZE:
+        # NEOchrome has the same leading resolution word and may therefore
+        # reach this plugin first. Its header starts with two zero words, but
+        # use a DEGAS filename as a tie-breaker for otherwise ambiguous padded
+        # images whose first palette entry is also black.
+        filename = str(getattr(self.fp, "name", "")).lower()
+        has_degas_extension = any(filename.endswith(extension) for extension in EXTENSIONS)
+        if file_size == NEO_FILE_SIZE and header[:4] == b"\x00\x00\x00\x00" and not has_degas_extension:
             msg = "not a DEGAS file"
             raise SyntaxError(msg)
 
