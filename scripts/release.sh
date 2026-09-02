@@ -17,4 +17,16 @@ if [ -z "$PYPI_TOKEN" ]; then
   exit 1
 fi
 
-python3 -m twine upload dist/* --user=__token__ --password="$PYPI_TOKEN"
+ARTIFACTS=(
+  "dist/pillow_degas-$VERSION-py3-none-any.whl"
+  "dist/pillow_degas-$VERSION.tar.gz"
+)
+
+for artifact in "${ARTIFACTS[@]}"; do
+  if [ ! -f "$artifact" ]; then
+    echo "Missing release artifact: $artifact"
+    exit 1
+  fi
+done
+
+python3 -m twine upload "${ARTIFACTS[@]}" --user=__token__ --password="$PYPI_TOKEN"
