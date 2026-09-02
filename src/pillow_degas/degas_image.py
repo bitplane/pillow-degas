@@ -109,6 +109,28 @@ def decompress_packbits(data: bytes, expected_size: int = PIXEL_DATA_SIZE) -> by
     return bytes(result[:expected_size])
 
 
+def decompress_packbits_file(fd, expected_size: int = PIXEL_DATA_SIZE) -> bytes:
+    """Decompress PackBits data from a file without reading it all into memory."""
+    result = bytearray()
+
+    while len(result) < expected_size:
+        control = fd.read(1)
+        if not control:
+            break
+
+        n = control[0]
+        if n <= 127:
+            result.extend(fd.read(n + 1))
+        elif n >= 129:
+            value = fd.read(1)
+            if not value:
+                break
+            result.extend(value * (257 - n))
+        # n == 128: no-op
+
+    return bytes(result[:expected_size])
+
+
 def reinterleave(data: bytes, width: int, height: int, bitplanes: int) -> bytes:
     """Convert separated-bitplane-per-scanline to word-interleaved framebuffer format.
 
@@ -211,8 +233,7 @@ class DegasDecoder(ImageFile.PyDecoder):
         height = self.state.ysize
 
         if compressed:
-            raw_data = self.fd.read()
-            pixel_data = decompress_packbits(raw_data, PIXEL_DATA_SIZE)
+            pixel_data = decompress_packbits_file(self.fd, PIXEL_DATA_SIZE)
             pixel_data = reinterleave(pixel_data, width, height, bitplanes)
         else:
             pixel_data = self.fd.read(PIXEL_DATA_SIZE)

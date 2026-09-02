@@ -248,6 +248,28 @@ def test_open_pc1():
     img.load()
 
 
+def test_compressed_input_read_is_bounded():
+    class RecordingBytesIO(io.BytesIO):
+        def __init__(self, data):
+            super().__init__(data)
+            self.read_sizes = []
+
+        def read(self, size=-1):
+            self.read_sizes.append(size)
+            return super().read(size)
+
+    # 250 repeat runs expand to the required 32,000 bytes. The large suffix
+    # must not be pulled into memory by the decoder.
+    payload = bytes([129, 0]) * 250 + b"unused trailing data" * 10_000
+    source = RecordingBytesIO(struct.pack(">H", 0x8000) + bytes(32) + payload)
+
+    with Image.open(source) as img:
+        img.load()
+
+    assert -1 not in source.read_sizes
+    assert max(source.read_sizes) <= 128
+
+
 def test_open_pi2():
     img = Image.open(DATA_DIR / "VALENTIN.PI2")
     assert img.mode == "P"
