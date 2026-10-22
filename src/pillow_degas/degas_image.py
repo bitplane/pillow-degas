@@ -157,7 +157,9 @@ def reinterleave(data: bytes, width: int, height: int, bitplanes: int) -> bytes:
 
 
 DEGAS_UNCOMPRESSED_SIZE = HEADER_SIZE + PIXEL_DATA_SIZE  # 32034
+DEGAS_ELITE_UNCOMPRESSED_SIZE = DEGAS_UNCOMPRESSED_SIZE + 32  # colour cycling data
 NEO_FILE_SIZE = 32128
+TGA_SIGNATURE = b"TRUEVISION-XFILE.\x00"
 
 
 def _accept(prefix: bytes) -> bool:
@@ -193,6 +195,11 @@ class DegasImageFile(ImageFile.ImageFile):
 
         self.fp.seek(0, 2)
         file_size = self.fp.tell()
+        if file_size >= len(TGA_SIGNATURE):
+            self.fp.seek(-len(TGA_SIGNATURE), 2)
+            if self.fp.read(len(TGA_SIGNATURE)) == TGA_SIGNATURE:
+                msg = "not a DEGAS file"
+                raise SyntaxError(msg)
         self.fp.seek(HEADER_SIZE)
 
         # NEOchrome has the same leading resolution word and may therefore
@@ -205,11 +212,22 @@ class DegasImageFile(ImageFile.ImageFile):
             msg = "not a DEGAS file"
             raise SyntaxError(msg)
 
-        if not compressed and file_size < DEGAS_UNCOMPRESSED_SIZE:
-            msg = "not a DEGAS file"
-            raise SyntaxError(msg)
+        if not compressed:
+            known_size = file_size in (DEGAS_UNCOMPRESSED_SIZE, DEGAS_ELITE_UNCOMPRESSED_SIZE, NEO_FILE_SIZE)
+            # Without a distinctive signature, arbitrary trailing data would
+            # also admit ICO and legacy TGA files. Only named DEGAS files may
+            # have nonstandard padding.
+            if file_size < DEGAS_UNCOMPRESSED_SIZE or (not known_size and not has_degas_extension):
+                msg = "not a DEGAS file"
+                raise SyntaxError(msg)
 
         palette_data, is_ste = parse_palette(header[2:HEADER_SIZE])
+        if resolution == 2:
+            # Monochrome bypasses the colour palette; register 0 bit 0
+            # selects a white background (pixel 0 white, pixel 1 black).
+            white_background = bool(header[3] & 1)
+            background = 255 if white_background else 0
+            palette_data = bytes([background] * 3 + [255 - background] * 3) + bytes(762)
 
         self._mode = "P"
         self._size = (width, height)

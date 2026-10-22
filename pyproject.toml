@@ -1,7 +1,7 @@
 [project]
 name = "pillow_degas"
 description = "Atari DEGAS image loader for Pillow"
-version = "0.2.1"
+version = "0.2.2"
 authors = [
     { name = "Gareth Davidson", email = "gaz@bitplane.net" }
 ]
@@ -9,7 +9,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 dependencies = [
-    "pillow"
+    "pillow>=10.2.0"
 ]
 
 [project.optional-dependencies]

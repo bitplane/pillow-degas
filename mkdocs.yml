@@ -1,5 +1,5 @@
-site_name: example-python-project
-repo_url: https://github.com/bitplane/python/example-python-project
+site_name: pillow-degas
+repo_url: https://github.com/bitplane/pillow-degas
 theme:
   name: material
   palette:

@@ -2,9 +2,11 @@
 
 import io
 import struct
+import subprocess
+import sys
 
 import pytest
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 import pillow_degas  # noqa: F401 — registers the plugin
 from pillow_degas.degas_image import (
@@ -18,7 +20,6 @@ from pillow_degas.degas_image import (
 from pillow_degas.neo_image import _accept as neo_accept
 
 from .conftest import DATA_DIR
-
 
 # --- palette parsing ---
 
@@ -230,6 +231,7 @@ def test_accept_invalid():
 
 def test_open_pi1():
     img = Image.open(DATA_DIR / "MOUSE.PI1")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (320, 200)
     assert img.info["resolution"] == 0
@@ -241,6 +243,7 @@ def test_open_pi1():
 
 def test_open_pc1():
     img = Image.open(DATA_DIR / "AMMO.PC1")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (320, 200)
     assert img.info["resolution"] == 0
@@ -263,7 +266,9 @@ def test_compressed_input_read_is_bounded():
     payload = bytes([129, 0]) * 250 + b"unused trailing data" * 10_000
     source = RecordingBytesIO(struct.pack(">H", 0x8000) + bytes(32) + payload)
 
-    with Image.open(source) as img:
+    # Limit discovery to DEGAS so reads by unrelated Pillow plugins do not
+    # affect this decoder's memory bound.
+    with Image.open(source, formats=["DEGAS"]) as img:
         img.load()
 
     assert -1 not in source.read_sizes
@@ -272,6 +277,7 @@ def test_compressed_input_read_is_bounded():
 
 def test_open_pi2():
     img = Image.open(DATA_DIR / "VALENTIN.PI2")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (640, 200)
     assert img.info["resolution"] == 1
@@ -281,6 +287,7 @@ def test_open_pi2():
 
 def test_open_pi3():
     img = Image.open(DATA_DIR / "HIDDEN.PI3")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (640, 400)
     assert img.info["resolution"] == 2
@@ -290,6 +297,7 @@ def test_open_pi3():
 
 def test_open_pc3():
     img = Image.open(DATA_DIR / "CLIPART.PC3")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (640, 400)
     assert img.info["resolution"] == 2
@@ -297,8 +305,82 @@ def test_open_pc3():
     img.load()
 
 
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("register_zero", [0x0000, 0x0001, 0x0776, 0x0777])
+def test_monochrome_palette(compressed, register_zero):
+    palette = struct.pack(">16H", register_zero, *([0x0700] * 15))
+    pixels = bytes([129, 0xAA]) * 250 if compressed else b"\xaa" * 32000
+    resolution = 0x8002 if compressed else 2
+    source = io.BytesIO(struct.pack(">H", resolution) + palette + pixels)
+
+    with Image.open(source) as img:
+        rgb = img.convert("RGB")
+        background = 255 if register_zero & 1 else 0
+        assert rgb.getpixel((0, 0)) == (255 - background,) * 3
+        assert rgb.getpixel((1, 0)) == (background,) * 3
+        assert set(rgb.getcolors()) == {(128000, (0, 0, 0)), (128000, (255, 255, 255))}
+
+
+@pytest.mark.parametrize("file_format", ["ICO", "TGA", "TGA_ID", "TGA_LEGACY"])
+@pytest.mark.parametrize("initialize_first", [False, True])
+def test_builtin_formats_keep_precedence(tmp_path, file_format, initialize_first):
+    path = tmp_path / ("image.ico" if file_format == "ICO" else "image.tga")
+    options = {"bitmap_format": "bmp", "sizes": [(128, 128)]} if file_format == "ICO" else {}
+    if file_format == "TGA_ID":
+        options["id_section"] = b"x" * 128  # resembles compressed DEGAS
+    Image.new("RGB", (128, 128), "red").save(path, **options)
+    if file_format == "TGA_LEGACY":
+        path.write_bytes(path.read_bytes()[:-26])  # no TGA 2.0 footer
+    assert path.stat().st_size > 32034
+
+    # A fresh interpreter also exercises importing before Pillow initializes
+    # its built-in plugins. Test streams as well as named files.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import io
+import sys
+from pathlib import Path
+from PIL import Image
+
+if sys.argv[3] == "True":
+    Image.init()
+import pillow_degas
+
+path = Path(sys.argv[1])
+for source in (path, io.BytesIO(path.read_bytes())):
+    with Image.open(source) as img:
+        assert img.format == sys.argv[2], img.format
+        assert img.size == (128, 128), img.size
+        assert img.convert("RGB").getpixel((0, 0)) == (255, 0, 0)
+""",
+            str(path),
+            "ICO" if file_format == "ICO" else "TGA",
+            str(initialize_first),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("first_colour", [0x0100, 0x0300])
+def test_degas_palette_resembling_builtin_header(first_colour):
+    # ICO magic and a plausible 1x1 TGA header can occur in valid ST/STE palettes.
+    palette = [first_colour, 1, 0, 0, 0, 0x0100, 0x0100, 0x0800] + [0] * 8
+    source = io.BytesIO(struct.pack(">17H", 0, *palette) + bytes(32000))
+    with Image.open(source) as img:
+        assert img.format == "DEGAS"
+        assert img.size == (320, 200)
+        img.load()
+
+
 def test_open_pc2():
     img = Image.open(DATA_DIR / "MONROE.PC2")
+    assert img.format == "DEGAS"
     assert img.mode == "P"
     assert img.size == (640, 200)
     assert img.info["resolution"] == 1
@@ -326,21 +408,21 @@ def test_save_as_png(tmp_path):
 
 
 def test_reject_truncated_header():
-    with pytest.raises(Exception):
+    with pytest.raises(UnidentifiedImageError):
         Image.open(io.BytesIO(b"\x00\x00\x00"))
 
 
 def test_reject_bad_resolution():
     # Resolution word 3 is invalid
     data = struct.pack(">H", 3) + b"\x00" * 32032
-    with pytest.raises(Exception):
+    with pytest.raises(UnidentifiedImageError):
         Image.open(io.BytesIO(data))
 
 
 def test_reject_undersized_uncompressed():
     # Valid resolution word but file too small
     data = struct.pack(">H", 0) + b"\x00" * 100
-    with pytest.raises(Exception):
+    with pytest.raises(UnidentifiedImageError):
         Image.open(io.BytesIO(data))
 
 
